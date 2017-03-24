@@ -2175,12 +2175,180 @@ combos3R4plotnoNs <- ggplot(Mcombos3errR4wDnoNs, aes(x=comboswD, y=pct, fill=con
 #7mers for 400 000, stack, SE 
 #all
 
+#COUNT 7MERS AND 5MERS IN READS
+
+combos7 <- do.call(CJ, replicate(flankno*2 + 1, nts, FALSE))
+combos7 <- apply(combos7, 1, paste, collapse="") #char array/vector
+combos7 <- data.frame(combos=combos7, stringsAsFactors = FALSE) #keys/index for counter
+
+count7mers <- new.env(parent=emptyenv(), size=nrow(combos7)*1.2) 
+
+combos5 <- do.call(CJ, replicate(5, nts, FALSE))
+combos5 <- apply(combos5, 1, paste, collapse="") #char array/vector
+combos5 <- data.frame(combos=combos5, stringsAsFactors = FALSE) #keys/index for counter
+
+count5mers <- new.env(parent=emptyenv(), size=nrow(combos5)*1.2) 
+
+#loop through seqs to COUNT 5MERS and 7MERS IN READS, BEEN RUN
+for (i in 1:length(lines)){ #for each seq 
+  if (i %% 4 == 1) { 
+    header <- lines[i]
+    #numreads <- substring(header, 51, 53) #strip colons later
+    numreads <- strsplit(header, split=":")[[1]] #need num form cause going to multiply later
+    length <- length(numreads)
+    numreads <- as.numeric(numreads[length-3]) #get 4th last thing in header
+  }
+  if (numreads > 2 ) {
+    if (i %% 4 == 2) { #if line index divided by 4, gets remainder = 2
+      seq = lines[i]
+      print(i/4 + 0.5)
+      len <- nchar(seq)
+      begin = 1
+      endd = flankno*2+1 #reset for each seq
+      begin5 = 1
+      endd5 = 5
+      while (endd <= len){
+        frag <- substr(seq, begin, endd)
+        #print(frag)
+        #then increment counter for whatever substr it gets
+        count7mers[[frag]] <- mget(frag, count7mers, ifnotfound = 0)[[1]] + numreads
+        #print(counters[[frag]]) 
+        begin = begin + 1
+        endd = endd + 1
+      }
+      while (endd5 <= len){ 
+        frag5 <- substr(seq, begin5, endd5)
+        count5mers[[frag5]] <- mget(frag5, count5mers, ifnotfound = 0)[[1]] + numreads    
+        begin5 = begin5 + 1
+        endd5 = begin5 + 1
+      } 
+    }
+  }
+}
+#unlist counters output to df to plot later...
+combos7$count <- unlist(mget(combos7$combos, envir = count7mers, ifnotfound = 0))
+combos5$count <- unlist(mget(combos5$combos, envir = count5mers, ifnotfound = 0)) #SAVE WORKSPACE 
+#add count to both dfs, number of combos same as all poss???
+
+#count number of mers with error at centre for NUMERATOR
+
+combos7col <- vector(mode='list', 4000000) #4 mill, too slow? but preseting, otherwise use enviro DID I OVERWRITE ANOTHER VAR
+combos7wD <- vector(mode='list', 4000000)
+numero7 <- vector(mode='list', 4000000)
+combos5col <- vector(mode='list', 4000000)
+combos5wD <- vector(mode='list', 4000000)
+numero5 <- vector(mode='list', 4000000)
+w <- 1
+for (i in 1:length(lines)){ #for each line of fastq
+  if (i %% 4 == 1) { 
+    header <- lines[i]
+    #numreads <- substring(header, 51, 53) #strip colons later
+    numreads <- strsplit(header, split=":")[[1]] #need num form cause going to multiply later
+    length <- length(numreads)
+    numreads <- as.numeric(numreads[length-3]) #get 4th last thing in header
+  }
+  if (numreads > 2 ) {
+    if (i %% 4 == 2) { #if line index divided by 4, gets remainder = 2
+      print(i/4 + 0.5) #i for integer, seqno, only prints the seq it goes to
+      seq = lines[i]
+    }
+    if (i %% 4 == 3){
+      diffs = lines[i]
+      #remove plus start
+      diffs <- substring(diffs, 2) 
+      diffs = strsplit(diffs, " ")[[1]] #creates a list of vector elements 
+      #print(diffs)
+      errsperseq <- length(diffs)
+      #print(errsperseq) 
+      if (errsperseq > 0){
+        for (k in 1:errsperseq){ #going through errors 
+          diff = diffs[k]
+          #print(diff)
+          #pull out nums and letters
+          posno <- as.numeric(strsplit(diff, split="[[:upper:]]")[[1]][1]) #first num, strsplit makes list
+          conschar <- substr(seq, posno, posno) #start and stop
+          #print(conschar)
+          conschar7mer <- substr(seq, posno-3, posno+3) #ADD VAR OR COL WITH DIFF
+          conschar5mer <- substr(seq, posno-2, posno+2)
+          #print(conschar3mer)
+          #consnum, could take it out and be left with diffnum
+          cons <- str_extract(diff, paste0(conschar, "[[:digit:]]+"))
+          #consnum <- str_extract(cons, "[[:digit:]]+") #number after cons letter NEED???
+          #take out cons from error
+          diffwocons <- gsub(cons, "", diff)
+          diffnum <-strsplit(diffwocons, split="[[:upper:]]")[[1]][-1] #takes out first num/posno, length 2 OR MORE/5
+          #print(diffnum)
+          diffchar <-strsplit(diffwocons, split="[[:digit:]]+")[[1]][-1] #plus means any size digit, first one empty for some reason?
+          #could be 4 diff chars in one err!
+          #so need loop through diffnums
+          for (j in 1:length(diffnum)){
+            cons7merwDiff <- paste0(conschar7mer, ">", diffchar[j])
+            cons5merwDiff <- paste0(conschar5mer, ">", diffchar[j])
+            #add to the 3 cols
+            combos7wD[[w]] <- cons7merwDiff
+            combos7col[[w]] <- conschar7mer
+            numero7[[w]] <- diffnum[j]
+            combos5wD[[w]] <- cons5merwDiff
+            combos5col[[w]] <- conschar5mer
+            numero5[[w]] <- diffnum[j]
+            w <- w + 1
+          }
+        }
+      }
+    }
+  }
+}
+#unlist, rids zeros??
+combos7col <- unlist(combos7col) 
+combos7wD <- unlist(combos7wD)
+numero7 <- as.numeric(unlist(numero7))
+combos5col <- unlist(combos5col) 
+combos5wD <- unlist(combos5wD)
+numero5 <- as.numeric(unlist(numero5))
+#dataframe
+combos7errR4wD <- data.frame(cbind(combos7col, combos7wD, numero7)) #HAS LEVELS
+combos7errR4wD$numero7 <- as.numeric(combos7errR4wD$numero7) #gets rid of levels 
+combos7errR4wD$combos7wD <- as.character(combos7errR4wD$combos7wD)
+combos7errR4wD$combos7col <- as.character(combos7errR4wD$combos7col)
+combos5errR4wD <- data.frame(cbind(combos5col, combos5wD, numero5)) 
+combos5errR4wD$numero5 <- as.numeric(combos5errR4wD$numero5) 
+combos5errR4wD$combos5wD <- as.character(combos5errR4wD$combos5wD)
+combos5errR4wD$combos5col <- as.character(combos5errR4wD$combos5col)
+
+#unique, based on combos col for now, need diff col and rearrange df to stack later
+combos7errR4wD <- ddply(combos7errR4wD,.(combos7col),summarize,numero7=sum(numero7)) 
+combos5errR4wD <- ddply(combos5errR4wD,.(combos5col),summarize,numero5=sum(numero5))
+
+#nchar to get rid of shorter mers
+combos7errR4wD <- subset(combos7errR4wD, nchar(combos7errR4wD$combos7col) == 7)
+combos5errR4wD <- subset(combos5errR4wD, nchar(combos5errR4wD$combos5col) == 5)
+
+#merge dfs UP TOOOO**** calc, plot, fix, zeros, save workspace 
+Mcombos7errR4wD <- merge(combos7errR4wD, combos7, by.x = "combos7col", by.y = "combos") #WHAT DOES MERGED COL GET CALLED?
+Mcombos5errR4wD <- merge(combos5errR4wD, combos5, by.x = "combos5col", by.y = "combos")
+
+#calc pct
+Mcombos7errR4wD$pct <- Mcombos7errR4wD$numero7/Mcombos7errR4wD$count *100
+Mcombos5errR4wD$pct <- Mcombos5errR4wD$numero5/Mcombos5errR4wD$count *100
+
+#NUMERATOR GREATER THAN DENO FOR 5, BACKTRACK FOR COUNT AND NUMERO ******** UP TO ***** PLOT 7
+
+#plot, ADD ZEROS TO 7, missing values warning??
+combos7R4plot <- ggplot(Mcombos7errR4wD, aes(x=reorder(combos7col, -pct), y=pct)) + geom_bar(stat="identity", width=0.8, fill="#CC3366")+ geom_text(aes(label=round(pct,4), y=(pct)+0.02), angle=90) + labs(title="Error rate of 3-mers", x= "3-mers", y="Percentage (%)")+ theme_bw() + theme(panel.border = element_blank()) + scale_y_continuous(expand=c(0,0), limits = c(0, max(Mcombos7errR4wD$pct)+0.2)) + theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
+# + geom_errorbar(aes(ymax = pct, ymin=pct)) 
+
+combos5R4plot <- ggplot(Mcombos5errR4wD, aes(x=reorder(combos, -pct), y=pct)) + geom_bar(stat="identity", width=0.8, fill="#CC3366")+ geom_text(aes(label=round(pct,4), y=(pct)+0.02), angle=90) + labs(title="Error rate of 3-mers", x= "3-mers", y="Percentage (%)")+ theme_bw() + theme(panel.border = element_blank()) + scale_y_continuous(expand=c(0,0), limits = c(0, max(Mcombos3errR4wD$pct)+0.2)) + theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
+
 
 #front
 
 
 #back
   
+
+#5mers
+
+
 
 
 #single change plot
@@ -2189,7 +2357,9 @@ combos3R4plotnoNs <- ggplot(Mcombos3errR4wDnoNs, aes(x=comboswD, y=pct, fill=con
 #put R on github
 
 
-#pink things/move MD
+#pink things
+
+#move MD
 
 
 
